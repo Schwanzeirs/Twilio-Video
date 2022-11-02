@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useContext } from "react"
 import { Videocontext } from '../context/video-context';
-import { Twilio, createLocalVideoTrack, TrackPublication, Participant, Track, } from 'twilio-video'
+import { Twilio, createLocalVideoTrack, TrackPublication, Participant, Track, connect, createLocalTracks } from 'twilio-video'
 import { Usercontext } from '../context/user-context';
 
 export default function Check() {
-    const [videoState, videoDispatch] = useContext(Videocontext)
-    const [state, dispatch] = useContext(Usercontext)
-    const [name] = useState(state)
+    const [videoState] = useContext(Videocontext)
+    const [state] = useContext(Usercontext)
+    const token = localStorage.token
+    console.log("Access Token : ", token);
+    const [user] = useState(state.user)
+    const [roomName] = useState(videoState.roomName)
     console.log(videoState.roomName);
     async function startVideo() {
         const track = await createLocalVideoTrack();
@@ -15,75 +18,46 @@ export default function Check() {
         box.append(track.attach());
         console.log("Local Video Track : ", track);
     }
-    const startRoom = async (event) => {
-        event.preventDefault();
-        const { token } = localStorage.token
-        const { roomName } = videoState.roomName
-        const room = await joinVideoRoom(roomName, token);
-        console.log("Authentication token : ", token);
-        handleConnectedParticipant(room.localParticipant)
-        room.participants.forEach(handleConnectedParticipant);
-        console.log("Audio track : ", room.localParticipant.audioTracks);
-        console.log("Video track : ", room.localParticipant.videoTracks);
-        room.on("participantConnected", handleConnectedParticipant);
-        // handle cleanup when a participant disconnects
-        room.on("participantDisconnected", handleDisconnectedParticipant);
-        window.addEventListener("pagehide", () => room.disconnect());
-        window.addEventListener("beforeunload", () => room.disconnect());
-    }
-    const joinVideoRoom = async (roomName, token) => {
-        const room = await Twilio.Video.connect(token, {
-            room: roomName
-        });
-        return room;
-    }
-    const handleConnectedParticipant = (Participant) => {
-        const participantDiv = document.createElement("div");
-        participantDiv.setAttribute("id", Participant.identity);
-        console.log("Participant DIV : ", participantDiv);
-        const user = document.createElement("p");
-        user.append(document.createTextNode(name))
-        const container = document.getElementById("video-container")
-        container.appendChild(participantDiv);
-        container.append(user)
 
-        console.log("participant: ", Participant);
-        Participant.tracks.forEach((TrackPublication) => {
-            console.log("trackPublication: ", TrackPublication);
-            handleTrackPublication(TrackPublication, Participant);
-        });
-
-        // listen for any new track publications
-        Participant.on("trackPublished", handleTrackPublication);
+    async function start() {
+        const tracks = await createLocalTracks();
+        const box = document.getElementById("box");
+        const LocalVideoTrack = tracks.find(track => track.kind === 'video');
+        box.appendChild(LocalVideoTrack.attach());
     }
 
-    const handleDisconnectedParticipant = (Participant) => {
-        Participant.removeAllListeners();
-        const participantDiv = document.getElementById(Participant.identity);
-        participantDiv.remove();
-    }
-
-    const handleTrackPublication = (TrackPublication, Participant) => {
-        function displayTrack(Track) {
-            const participantDiv = document.getElementById(Participant.identity);
-            participantDiv.append(Track.attach());
-        }
-        if (TrackPublication.Track) {
-            displayTrack(TrackPublication.Track)
-        }
-
-        TrackPublication.on("subscribed", displayTrack)
+    async function room() {
+        const tracks = await createLocalTracks({
+            audio: true,
+            video: { facingMode: 'user'}
+        })
+        const username = user
+        const nameRoom = roomName
+        const LocalVideoTrack = tracks.find(track => track.kind === 'video');
+        const box = document.getElementById("box");
+        const on = document.getElementById("on-btn");
+        const name = document.getElementById("name")
+        const rooms = document.getElementById("roomName")
+        await connect(`${token}`, {
+            name: `${roomName}`,
+            tracks
+        })
+        box.appendChild(LocalVideoTrack.attach());
+        on.style.visibility = "hidden";
+        console.log("Local Tracks : ", tracks);
+        console.log("You are connect to room : ", nameRoom);
+        console.log("User Name : ", username);
+        name.append(document.createTextNode(username))
+        rooms.append(document.createTextNode(`You are connected to room : ${nameRoom}`))
     }
 
     return (
         <>
-            <button onClick={startVideo}>Video on</button>
+            <button onClick={start} id="on-btn">Video on</button>
             <div id='box'></div>
-            <button onClick={startRoom}>Join Room</button>
-            <div className='videos'>
-                <div id='video-container'></div>
-                <p id='name'></p>
-            </div>
+            <p id='name'></p>
+            <p id='roomName'></p>
+            <button onClick={room} id="start" value="connect">Join Room</button>
         </>
     )
 }
